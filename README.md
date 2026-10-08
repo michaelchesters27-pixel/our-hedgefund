@@ -1,12 +1,12 @@
 # OUR HEDGEFUND
 
-GitHub + Netlify only. No Railway.
+GitHub + Netlify only.
 
 ## Demo rules
 - Micky: 40%
 - Doc: 30%
 - Hacky: 30%
-- Shared demo PIN: 54321
+- Shared demo PIN is configured in the app
 - No trade history
 - No trading controls
 - Dashboard follows MT5 demo balance/equity
