@@ -1,0 +1,10 @@
+{
+  "name": "our-hedgefund",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/database": "^1.0.0",
+    "@netlify/functions": "^5.0.0"
+  }
+}
