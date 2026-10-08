@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OUR HEDGEFUND</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080b10;color:#f7f9fc}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -15%,#25334d 0,#111722 36%,#080b10 70%)}
+.wrap{max-width:980px;margin:auto;padding:32px 18px 60px}
+.card{background:rgba(18,24,35,.92);border:1px solid #29354a;border-radius:22px;box-shadow:0 22px 65px rgba(0,0,0,.28)}
+.login{max-width:440px;margin:12vh auto;padding:28px}
+.kicker{color:#8fa1bc;font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+h1{font-size:clamp(30px,6vw,52px);margin:5px 0;letter-spacing:.06em}
+.muted{color:#8fa1bc}
+label{display:block;margin:18px 0 8px;color:#aab6ca;font-size:13px}
+select,input{width:100%;border:1px solid #34425b;background:#0d131d;color:#fff;padding:14px;border-radius:12px;font-size:16px}
+button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:pointer}
+.primary{width:100%;margin-top:18px;background:#f0f4ff;color:#101520}
+.error{min-height:22px;color:#ff9d9d;margin-top:10px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.logout{background:transparent;color:#aab6ca;border:1px solid #31405a}
+.hero{text-align:center;padding:30px;margin-bottom:18px}
+.amount{font-size:clamp(48px,9vw,82px);font-weight:900;letter-spacing:-.05em;margin:10px 0 4px}
+.live{font-size:13px;color:#82e6b2}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#46d58a;margin-right:7px}
+.members{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.member{padding:22px}.member.me{border-color:#6f82ac;box-shadow:0 0 0 1px #6f82ac inset}
+.name{font-size:21px;font-weight:900}.pct{font-size:13px;color:#8fa1bc;margin-top:4px}
+.value{font-size:31px;font-weight:900;margin:22px 0 18px}
+.withdraw{width:100%;background:#202a3c;color:#eef3ff;border:1px solid #34425b}
+.withdraw:disabled{opacity:.32;cursor:not-allowed}
+.foot{text-align:center;color:#5f6f88;font-size:12px;margin-top:20px}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);padding:20px}
+.modal.show{display:flex}.modalbox{width:min(420px,100%);padding:24px}
+.actions{display:flex;gap:10px;margin-top:16px}.actions button{flex:1}.secondary{background:#202a3c;color:#eef3ff}
+@media(max-width:720px){.members{grid-template-columns:1fr}.header{align-items:flex-start;gap:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="login" class="card login">
+    <div class="kicker">Private demo</div>
+    <h1>OUR HEDGEFUND</h1>
+    <div class="muted">Micky · Doc · Hacky</div>
+
+    <label>Your name</label>
+    <select id="who">
+      <option value="micky">Micky</option>
+      <option value="doc">Doc</option>
+      <option value="hacky">Hacky</option>
+    </select>
+
+    <label>PIN</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN">
+
+    <button class="primary" onclick="login()">Log in</button>
+    <div id="loginError" class="error"></div>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="header">
+      <div><div class="kicker">Private demo</div><h1>OUR HEDGEFUND</h1></div>
+      <button class="logout" onclick="logout()">Log out</button>
+    </div>
+
+    <div class="card hero">
+      <div class="kicker">Live demo pot</div>
+      <div id="pot" class="amount">—</div>
+      <div class="live"><span class="dot"></span><span id="status">Waiting for MT5</span></div>
+    </div>
+
+    <div id="members" class="members"></div>
+    <div class="foot">Demo account only · updates automatically</div>
+  </div>
+</div>
+
+<div id="modal" class="modal">
+  <div class="card modalbox">
+    <div class="kicker">Demo withdrawal</div>
+    <h2 id="modalTitle">Withdraw money</h2>
+    <label>Amount</label>
+    <input id="withdrawAmount" type="number" min="0.01" step="0.01">
+    <div id="withdrawError" class="error"></div>
+    <div class="actions">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="primary" style="margin:0" onclick="submitWithdrawal()">Withdraw</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token=localStorage.getItem("ohf_token")||"";
+let state=null;
+
+const money=(n,c)=>new Intl.NumberFormat("en-GB",{
+  style:"currency",currency:c||"USD",minimumFractionDigits:2
+}).format(Number(n||0));
+
+async function api(path,options={}){
+  options.headers={
+    ...(options.headers||{}),
+    "Content-Type":"application/json",
+    ...(token?{"Authorization":"Bearer "+token}:{})
+  };
+  const res=await fetch(path,options);
+  let data={};
+  try{data=await res.json()}catch{}
+  if(!res.ok)throw new Error(data.error||"Request failed");
+  return data;
+}
+
+async function login(){
+  document.getElementById("loginError").textContent="";
+  try{
+    const name=document.getElementById("who").value;
+    const pin=document.getElementById("pin").value;
+    const data=await api("/api/login",{method:"POST",body:JSON.stringify({name,pin})});
+    token=data.token;
+    localStorage.setItem("ohf_token",token);
+    showApp();
+    await refresh();
+  }catch(e){
+    document.getElementById("loginError").textContent=e.message;
+  }
+}
+
+function logout(){
+  token="";
+  state=null;
+  localStorage.removeItem("ohf_token");
+  document.getElementById("app").style.display="none";
+  document.getElementById("login").style.display="block";
+}
+
+function showApp(){
+  document.getElementById("login").style.display="none";
+  document.getElementById("app").style.display="block";
+}
+
+function render(){
+  if(!state)return;
+  document.getElementById("pot").textContent=state.updatedAt?money(state.livePot,state.currency):"Waiting…";
+  document.getElementById("status").textContent=state.updatedAt
+    ?"LIVE · "+new Date(state.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})
+    :"Waiting for MT5";
+
+  document.getElementById("members").innerHTML=state.members.map(m=>`
+    <div class="card member ${m.slug===state.me?"me":""}">
+      <div class="name">${m.name}</div>
+      <div class="pct">${m.ownershipPct.toFixed(2)}% ownership</div>
+      <div class="value">${money(m.value,state.currency)}</div>
+      <button class="withdraw" ${m.slug===state.me?"":"disabled"} onclick="openWithdraw('${m.slug}','${m.name}')">Withdraw money</button>
+    </div>
+  `).join("");
+}
+
+async function refresh(){
+  if(!token)return;
+  try{
+    state=await api("/api/state");
+    render();
+  }catch{
+    logout();
+  }
+}
+
+function openWithdraw(slug,name){
+  if(!state||slug!==state.me)return;
+  document.getElementById("withdrawAmount").value="";
+  document.getElementById("withdrawError").textContent="";
+  document.getElementById("modalTitle").textContent="Withdraw from "+name;
+  document.getElementById("modal").classList.add("show");
+}
+
+function closeModal(){
+  document.getElementById("modal").classList.remove("show");
+}
+
+async function submitWithdrawal(){
+  const amount=Number(document.getElementById("withdrawAmount").value);
+  try{
+    state=await api("/api/withdraw",{method:"POST",body:JSON.stringify({amount})});
+    closeModal();
+    render();
+  }catch(e){
+    document.getElementById("withdrawError").textContent=e.message;
+  }
+}
+
+if(token){showApp();refresh();}
+setInterval(()=>{if(token)refresh()},2000);
+</script>
+</body>
+</html>
