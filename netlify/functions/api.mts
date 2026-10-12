@@ -3,6 +3,7 @@ import type { Config } from "@netlify/functions";
 import { createHash, randomBytes } from "node:crypto";
 
 const PIN_HASH = "20f3765880a5c269b747e1e906054a4b4a3a991259f1e16b5dde4742cec2319a";
+const ACTIVE_MEMBERS = new Set(["micky", "doc"]);
 const REPORTER_KEY_HASH = "74142b030fa08e1a813f9a3339991087367a24c49cc021651488aeda4ebcbde4";
 
 const db = getDatabase();
@@ -33,7 +34,8 @@ async function authenticate(req: Request) {
     LIMIT 1
   `;
 
-  return rows[0]?.member_slug ?? null;
+  const member = rows[0]?.member_slug ?? null;
+  return member && ACTIVE_MEMBERS.has(member) ? member : null;
 }
 
 async function snapshot(me: string) {
@@ -61,10 +63,11 @@ async function snapshot(me: string) {
   const closedFund = s?.last_fund_balance == null ? 0 : Number(s.last_fund_balance);
   const liveFund = brokerEquity == null ? closedFund : brokerEquity - withdrawalOffset;
 
+  // Preserve existing third-party capital in fund accounting until ownership is explicitly resolved.
   const totalCapital = memberRows.reduce((sum, m) => sum + Number(m.capital), 0);
   const openMove = liveFund - closedFund;
 
-  const members = memberRows.map((m) => {
+  const members = memberRows.filter((m) => ACTIVE_MEMBERS.has(m.slug)).map((m) => {
     const capital = Number(m.capital);
     const fallback = m.slug === "micky" ? 0.4 : 0.3;
     const share = totalCapital > 0 ? capital / totalCapital : fallback;
@@ -77,12 +80,13 @@ async function snapshot(me: string) {
   });
 
   return {
-    demo: true,
+    demo: false,
     me,
     currency: s?.currency ?? "USD",
     livePot: liveFund,
     updatedAt: s?.updated_at ?? null,
     members,
+    reservedCapital: memberRows.filter((m) => !ACTIVE_MEMBERS.has(m.slug)).reduce((sum, m) => sum + Number(m.capital), 0),
   };
 }
 
@@ -91,7 +95,7 @@ async function handleLogin(req: Request) {
   const member = String(body.name ?? "").toLowerCase();
   const submittedPin = String(body.pin ?? "");
 
-  if (!["micky", "doc", "hacky"].includes(member) || sha256(submittedPin) !== PIN_HASH) {
+  if (!ACTIVE_MEMBERS.has(member) || sha256(submittedPin) !== PIN_HASH) {
     return response({ error: "Wrong name or PIN" }, 401);
   }
 
@@ -110,60 +114,6 @@ async function handleLogin(req: Request) {
 async function handleState(req: Request) {
   const me = await authenticate(req);
   if (!me) return response({ error: "Unauthorized" }, 401);
-  return response(await snapshot(me));
-}
-
-async function handleWithdraw(req: Request) {
-  const me = await authenticate(req);
-  if (!me) return response({ error: "Unauthorized" }, 401);
-
-  const body = await req.json().catch(() => ({})) as { amount?: number };
-  const amount = Number(body.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return response({ error: "Enter a valid amount" }, 400);
-  }
-
-  const client = await db.pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const memberResult = await client.query(
-      "SELECT capital FROM members WHERE slug = $1 FOR UPDATE",
-      [me]
-    );
-    await client.query(
-      "SELECT last_fund_balance FROM fund_state WHERE id = 1 FOR UPDATE"
-    );
-
-    const capital = Number(memberResult.rows[0]?.capital ?? 0);
-    if (amount > capital + 1e-8) {
-      await client.query("ROLLBACK");
-      return response({ error: "Amount is more than your available balance" }, 400);
-    }
-
-    await client.query(
-      "UPDATE members SET capital = capital - $1 WHERE slug = $2",
-      [amount, me]
-    );
-    await client.query(
-      `UPDATE fund_state
-       SET withdrawal_offset = withdrawal_offset + $1,
-           last_fund_balance = CASE
-             WHEN last_fund_balance IS NULL THEN NULL
-             ELSE last_fund_balance - $1
-           END
-       WHERE id = 1`,
-      [amount]
-    );
-
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-
   return response(await snapshot(me));
 }
 
@@ -267,7 +217,6 @@ export default async (req: Request) => {
   try {
     if (path === "/api/login" && req.method === "POST") return await handleLogin(req);
     if (path === "/api/state" && req.method === "GET") return await handleState(req);
-    if (path === "/api/withdraw" && req.method === "POST") return await handleWithdraw(req);
     if (path === "/api/report" && req.method === "POST") return await handleReport(req);
     return response({ error: "Not found" }, 404);
   } catch (error) {
@@ -277,5 +226,5 @@ export default async (req: Request) => {
 };
 
 export const config: Config = {
-  path: ["/api/login", "/api/state", "/api/withdraw", "/api/report"],
+  path: ["/api/login", "/api/state", "/api/report"],
 };
