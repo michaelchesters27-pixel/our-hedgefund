@@ -6,6 +6,12 @@ const PIN_HASH = "20f3765880a5c269b747e1e906054a4b4a3a991259f1e16b5dde4742cec231
 const ACTIVE_MEMBERS = new Set(["micky", "doc"]);
 const REPORTER_KEY_HASH = "74142b030fa08e1a813f9a3339991087367a24c49cc021651488aeda4ebcbde4";
 
+const TRACKING_START_DATE = "2026-10-12";
+const INITIAL_DEPOSIT_PER_MEMBER = 156.71;
+const INITIAL_FUND = INITIAL_DEPOSIT_PER_MEMBER * ACTIVE_MEMBERS.size;
+const RISK_FREE_TARGET_PER_MEMBER = INITIAL_DEPOSIT_PER_MEMBER * 2;
+const RISK_FREE_FUND_TARGET = RISK_FREE_TARGET_PER_MEMBER * ACTIVE_MEMBERS.size;
+
 const db = getDatabase();
 
 function sha256(value: string) {
@@ -64,12 +70,41 @@ async function snapshot(me: string) {
   const liveFund = brokerEquity == null ? closedFund : brokerEquity - withdrawalOffset;
 
   const openMove = liveFund - closedFund;
-  const members = memberRows.filter((m) => ACTIVE_MEMBERS.has(m.slug)).map((m) => ({
-    slug: m.slug,
-    name: m.display_name,
-    ownershipPct: 50,
-    value: (closedFund + openMove) / 2,
-  }));
+  const memberValue = (closedFund + openMove) / 2;
+  const fundProfitLoss = liveFund - INITIAL_FUND;
+  const fundReturnPct = INITIAL_FUND > 0 ? (fundProfitLoss / INITIAL_FUND) * 100 : 0;
+  const riskFreeRemaining = Math.max(0, RISK_FREE_FUND_TARGET - liveFund);
+  const riskFreeProgressPct = Math.max(
+    0,
+    Math.min(100, (Math.max(0, fundProfitLoss) / INITIAL_FUND) * 100)
+  );
+  const riskFreeAchieved = liveFund >= RISK_FREE_FUND_TARGET;
+
+  const members = memberRows.filter((m) => ACTIVE_MEMBERS.has(m.slug)).map((m) => {
+    const profitLoss = memberValue - INITIAL_DEPOSIT_PER_MEMBER;
+    const returnPct = INITIAL_DEPOSIT_PER_MEMBER > 0
+      ? (profitLoss / INITIAL_DEPOSIT_PER_MEMBER) * 100
+      : 0;
+    const memberRiskFreeRemaining = Math.max(0, RISK_FREE_TARGET_PER_MEMBER - memberValue);
+    const memberRiskFreeProgressPct = Math.max(
+      0,
+      Math.min(100, (Math.max(0, profitLoss) / INITIAL_DEPOSIT_PER_MEMBER) * 100)
+    );
+
+    return {
+      slug: m.slug,
+      name: m.display_name,
+      ownershipPct: 50,
+      value: memberValue,
+      initialDeposit: INITIAL_DEPOSIT_PER_MEMBER,
+      profitLoss,
+      returnPct,
+      riskFreeTarget: RISK_FREE_TARGET_PER_MEMBER,
+      riskFreeRemaining: memberRiskFreeRemaining,
+      riskFreeProgressPct: memberRiskFreeProgressPct,
+      riskFreeAchieved: memberValue >= RISK_FREE_TARGET_PER_MEMBER,
+    };
+  });
 
   return {
     demo: false,
@@ -77,6 +112,14 @@ async function snapshot(me: string) {
     currency: s?.currency ?? "USD",
     livePot: liveFund,
     updatedAt: s?.updated_at ?? null,
+    trackingStart: TRACKING_START_DATE,
+    initialFund: INITIAL_FUND,
+    fundProfitLoss,
+    fundReturnPct,
+    riskFreeFundTarget: RISK_FREE_FUND_TARGET,
+    riskFreeRemaining,
+    riskFreeProgressPct,
+    riskFreeAchieved,
     members,
   };
 }
