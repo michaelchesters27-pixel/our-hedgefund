@@ -25,31 +25,25 @@ button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:poin
 .amount{font-size:clamp(48px,9vw,82px);font-weight:900;letter-spacing:-.05em;margin:10px 0 4px}
 .live{font-size:13px;color:#82e6b2}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#46d58a;margin-right:7px}
-.members{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.members{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .member{padding:22px}.member.me{border-color:#6f82ac;box-shadow:0 0 0 1px #6f82ac inset}
 .name{font-size:21px;font-weight:900}.pct{font-size:13px;color:#8fa1bc;margin-top:4px}
 .value{font-size:31px;font-weight:900;margin:22px 0 18px}
-.withdraw{width:100%;background:#202a3c;color:#eef3ff;border:1px solid #34425b}
-.withdraw:disabled{opacity:.32;cursor:not-allowed}
 .foot{text-align:center;color:#5f6f88;font-size:12px;margin-top:20px}
-.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);padding:20px}
-.modal.show{display:flex}.modalbox{width:min(420px,100%);padding:24px}
-.actions{display:flex;gap:10px;margin-top:16px}.actions button{flex:1}.secondary{background:#202a3c;color:#eef3ff}
 @media(max-width:720px){.members{grid-template-columns:1fr}.header{align-items:flex-start;gap:12px}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div id="login" class="card login">
-    <div class="kicker">Private demo</div>
+    <div class="kicker">Private account</div>
     <h1>OUR HEDGEFUND</h1>
-    <div class="muted">Micky · Doc · Hacky</div>
+    <div class="muted">Micky · Doc</div>
 
     <label>Your name</label>
     <select id="who">
       <option value="micky">Micky</option>
       <option value="doc">Doc</option>
-      <option value="hacky">Hacky</option>
     </select>
 
     <label>PIN</label>
@@ -61,32 +55,19 @@ button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:poin
 
   <div id="app" style="display:none">
     <div class="header">
-      <div><div class="kicker">Private demo</div><h1>OUR HEDGEFUND</h1></div>
+      <div><div class="kicker">Private account</div><h1>OUR HEDGEFUND</h1></div>
       <button class="logout" onclick="logout()">Log out</button>
     </div>
 
     <div class="card hero">
-      <div class="kicker">Live demo pot</div>
+      <div class="kicker">Live account pot</div>
       <div id="pot" class="amount">—</div>
       <div class="live"><span class="dot"></span><span id="status">Waiting for MT5</span></div>
     </div>
 
     <div id="members" class="members"></div>
-    <div class="foot">Demo account only · updates automatically</div>
-  </div>
-</div>
-
-<div id="modal" class="modal">
-  <div class="card modalbox">
-    <div class="kicker">Demo withdrawal</div>
-    <h2 id="modalTitle">Withdraw money</h2>
-    <label>Amount</label>
-    <input id="withdrawAmount" type="number" min="0.01" step="0.01">
-    <div id="withdrawError" class="error"></div>
-    <div class="actions">
-      <button class="secondary" onclick="closeModal()">Cancel</button>
-      <button class="primary" style="margin:0" onclick="submitWithdrawal()">Withdraw</button>
-    </div>
+    <div id="reserveNote" class="foot" style="display:none"></div>
+    <div class="foot">MT5 balance and equity · updates automatically</div>
   </div>
 </div>
 
@@ -146,12 +127,14 @@ function render(){
     ?"LIVE · "+new Date(state.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})
     :"Waiting for MT5";
 
+  const reserveNote=document.getElementById("reserveNote");
+  reserveNote.style.display=Number(state.reservedCapital)>0?"block":"none";
+  reserveNote.textContent=Number(state.reservedCapital)>0?"Existing third-party funds remain reserved until ownership is agreed: "+money(state.reservedCapital,state.currency):"";
   document.getElementById("members").innerHTML=state.members.map(m=>`
     <div class="card member ${m.slug===state.me?"me":""}">
       <div class="name">${m.name}</div>
       <div class="pct">${m.ownershipPct.toFixed(2)}% ownership</div>
       <div class="value">${money(m.value,state.currency)}</div>
-      <button class="withdraw" ${m.slug===state.me?"":"disabled"} onclick="openWithdraw('${m.slug}','${m.name}')">Withdraw money</button>
     </div>
   `).join("");
 }
@@ -163,29 +146,6 @@ async function refresh(){
     render();
   }catch{
     logout();
-  }
-}
-
-function openWithdraw(slug,name){
-  if(!state||slug!==state.me)return;
-  document.getElementById("withdrawAmount").value="";
-  document.getElementById("withdrawError").textContent="";
-  document.getElementById("modalTitle").textContent="Withdraw from "+name;
-  document.getElementById("modal").classList.add("show");
-}
-
-function closeModal(){
-  document.getElementById("modal").classList.remove("show");
-}
-
-async function submitWithdrawal(){
-  const amount=Number(document.getElementById("withdrawAmount").value);
-  try{
-    state=await api("/api/withdraw",{method:"POST",body:JSON.stringify({amount})});
-    closeModal();
-    render();
-  }catch(e){
-    document.getElementById("withdrawError").textContent=e.message;
   }
 }
 
