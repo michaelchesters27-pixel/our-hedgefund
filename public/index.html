@@ -66,7 +66,6 @@ button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:poin
     </div>
 
     <div id="members" class="members"></div>
-    <div id="reserveNote" class="foot" style="display:none"></div>
     <div class="foot">MT5 balance and equity · updates automatically</div>
   </div>
 </div>
@@ -127,9 +126,6 @@ function render(){
     ?"LIVE · "+new Date(state.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})
     :"Waiting for MT5";
 
-  const reserveNote=document.getElementById("reserveNote");
-  reserveNote.style.display=Number(state.reservedCapital)>0?"block":"none";
-  reserveNote.textContent=Number(state.reservedCapital)>0?"Existing third-party funds remain reserved until ownership is agreed: "+money(state.reservedCapital,state.currency):"";
   document.getElementById("members").innerHTML=state.members.map(m=>`
     <div class="card member ${m.slug===state.me?"me":""}">
       <div class="name">${m.name}</div>
