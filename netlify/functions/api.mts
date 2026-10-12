@@ -63,21 +63,13 @@ async function snapshot(me: string) {
   const closedFund = s?.last_fund_balance == null ? 0 : Number(s.last_fund_balance);
   const liveFund = brokerEquity == null ? closedFund : brokerEquity - withdrawalOffset;
 
-  // Preserve existing third-party capital in fund accounting until ownership is explicitly resolved.
-  const totalCapital = memberRows.reduce((sum, m) => sum + Number(m.capital), 0);
   const openMove = liveFund - closedFund;
-
-  const members = memberRows.filter((m) => ACTIVE_MEMBERS.has(m.slug)).map((m) => {
-    const capital = Number(m.capital);
-    const fallback = m.slug === "micky" ? 0.4 : 0.3;
-    const share = totalCapital > 0 ? capital / totalCapital : fallback;
-    return {
-      slug: m.slug,
-      name: m.display_name,
-      ownershipPct: share * 100,
-      value: capital + openMove * share,
-    };
-  });
+  const members = memberRows.filter((m) => ACTIVE_MEMBERS.has(m.slug)).map((m) => ({
+    slug: m.slug,
+    name: m.display_name,
+    ownershipPct: 50,
+    value: (closedFund + openMove) / 2,
+  }));
 
   return {
     demo: false,
@@ -86,7 +78,6 @@ async function snapshot(me: string) {
     livePot: liveFund,
     updatedAt: s?.updated_at ?? null,
     members,
-    reservedCapital: memberRows.filter((m) => !ACTIVE_MEMBERS.has(m.slug)).reduce((sum, m) => sum + Number(m.capital), 0),
   };
 }
 
@@ -146,48 +137,14 @@ async function handleReport(req: Request) {
        WHERE id = 1
        FOR UPDATE`
     );
-    const membersResult = await client.query(
-      `SELECT slug, capital
-       FROM members
-       ORDER BY CASE slug WHEN 'micky' THEN 1 WHEN 'doc' THEN 2 ELSE 3 END
-       FOR UPDATE`
-    );
-
     const withdrawalOffset = Number(stateResult.rows[0]?.withdrawal_offset ?? 0);
-    const previousFundBalance =
-      stateResult.rows[0]?.last_fund_balance == null
-        ? null
-        : Number(stateResult.rows[0].last_fund_balance);
-
     const fundBalance = balance - withdrawalOffset;
-    const capitals = new Map<string, number>(
-      membersResult.rows.map((row: any) => [row.slug, Number(row.capital)])
-    );
-    const totalCapital = [...capitals.values()].reduce((a, b) => a + b, 0);
 
-    if (previousFundBalance == null || totalCapital <= 0) {
-      await client.query(
-        `UPDATE members
-         SET capital = CASE slug
-           WHEN 'micky' THEN $1
-           WHEN 'doc' THEN $2
-           WHEN 'hacky' THEN $3
-           ELSE capital
-         END`,
-        [fundBalance * 0.4, fundBalance * 0.3, fundBalance * 0.3]
-      );
-    } else {
-      const delta = fundBalance - previousFundBalance;
-      if (Math.abs(delta) > 1e-8) {
-        for (const [slug, capital] of capitals.entries()) {
-          const share = capital / totalCapital;
-          await client.query(
-            "UPDATE members SET capital = capital + $1 WHERE slug = $2",
-            [delta * share, slug]
-          );
-        }
-      }
-    }
+    // Equal partnership: never allocate any capital to a removed third member.
+    await client.query(
+      `UPDATE members SET capital = $1 WHERE slug IN ('micky', 'doc')`,
+      [fundBalance / 2]
+    );
 
     await client.query(
       `UPDATE fund_state
