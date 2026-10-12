@@ -28,9 +28,21 @@ button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:poin
 .members{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .member{padding:22px}.member.me{border-color:#6f82ac;box-shadow:0 0 0 1px #6f82ac inset}
 .name{font-size:21px;font-weight:900}.pct{font-size:13px;color:#8fa1bc;margin-top:4px}
-.value{font-size:31px;font-weight:900;margin:22px 0 18px}
+.value{font-size:31px;font-weight:900;margin:18px 0 16px}
+.overview{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.stat{padding:18px}.statLabel{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#7f91ad}
+.statValue{font-size:24px;font-weight:900;margin-top:7px}.statSub{font-size:12px;color:#8fa1bc;margin-top:5px}
+.positive{color:#82e6b2}.negative{color:#ff9d9d}.neutral{color:#d5deed}
+.metrics{border-top:1px solid #29354a;padding-top:13px;margin-top:4px}
+.row{display:flex;justify-content:space-between;gap:14px;padding:5px 0;font-size:13px}
+.row span:first-child{color:#8fa1bc}.row strong{text-align:right}
+.riskBox{margin-top:14px;padding:14px;border:1px solid #2d3a50;border-radius:14px;background:#0d131d}
+.riskTop{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.badge{font-size:10px;font-weight:900;letter-spacing:.09em;padding:5px 8px;border-radius:999px;border:1px solid #42516a;color:#aab6ca}
+.badge.ok{border-color:#2e9c67;color:#82e6b2}.progress{height:7px;background:#202a3a;border-radius:999px;overflow:hidden;margin-top:10px}
+.progress span{display:block;height:100%;background:#82a8ff;border-radius:999px}.riskText{font-size:11px;color:#8fa1bc;margin-top:7px}
 .foot{text-align:center;color:#5f6f88;font-size:12px;margin-top:20px}
-@media(max-width:720px){.members{grid-template-columns:1fr}.header{align-items:flex-start;gap:12px}}
+@media(max-width:720px){.members,.overview{grid-template-columns:1fr}.header{align-items:flex-start;gap:12px}}
 </style>
 </head>
 <body>
@@ -65,6 +77,7 @@ button{border:0;border-radius:12px;padding:13px 16px;font-weight:800;cursor:poin
       <div class="live"><span class="dot"></span><span id="status">Waiting for MT5</span></div>
     </div>
 
+    <div id="overview" class="overview"></div>
     <div id="members" class="members"></div>
     <div class="foot">MT5 balance and equity · updates automatically</div>
   </div>
@@ -77,6 +90,18 @@ let state=null;
 const money=(n,c)=>new Intl.NumberFormat("en-GB",{
   style:"currency",currency:c||"USD",minimumFractionDigits:2
 }).format(Number(n||0));
+
+const signedMoney=(n,c)=>{
+  const v=Number(n||0);
+  if(Math.abs(v)<0.005)return money(0,c);
+  return (v>0?"+":"-")+money(Math.abs(v),c);
+};
+const signedPct=(n)=>{
+  const v=Number(n||0);
+  if(Math.abs(v)<0.005)return "0.00%";
+  return (v>0?"+":"")+v.toFixed(2)+"%";
+};
+const pnlClass=(n)=>Number(n)>0?"positive":Number(n)<0?"negative":"neutral";
 
 async function api(path,options={}){
   options.headers={
@@ -121,18 +146,67 @@ function showApp(){
 
 function render(){
   if(!state)return;
+  const startLabel=state.trackingStart
+    ?new Date(state.trackingStart+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})
+    :"start";
+
   document.getElementById("pot").textContent=state.updatedAt?money(state.livePot,state.currency):"Waiting…";
   document.getElementById("status").textContent=state.updatedAt
     ?"LIVE · "+new Date(state.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})
     :"Waiting for MT5";
 
-  document.getElementById("members").innerHTML=state.members.map(m=>`
-    <div class="card member ${m.slug===state.me?"me":""}">
-      <div class="name">${m.name}</div>
-      <div class="pct">${m.ownershipPct.toFixed(2)}% ownership</div>
-      <div class="value">${money(m.value,state.currency)}</div>
+  const fundRemaining=Number(state.riskFreeRemaining||0);
+  const fundProgress=Math.max(0,Math.min(100,Number(state.riskFreeProgressPct||0)));
+
+  document.getElementById("overview").innerHTML=`
+    <div class="card stat">
+      <div class="statLabel">Starting pot</div>
+      <div class="statValue">${money(state.initialFund,state.currency)}</div>
+      <div class="statSub">Tracking from ${startLabel}</div>
     </div>
-  `).join("");
+    <div class="card stat">
+      <div class="statLabel">Since start</div>
+      <div class="statValue ${pnlClass(state.fundProfitLoss)}">${signedMoney(state.fundProfitLoss,state.currency)}</div>
+      <div class="statSub ${pnlClass(state.fundReturnPct)}">${signedPct(state.fundReturnPct)} return</div>
+    </div>
+    <div class="card stat">
+      <div class="statLabel">Both risk-free target</div>
+      <div class="statValue">${money(state.riskFreeFundTarget,state.currency)}</div>
+      <div class="statSub">${state.riskFreeAchieved?"Risk-free available":money(fundRemaining,state.currency)+" still needed"}</div>
+      <div class="progress"><span style="width:${fundProgress}%"></span></div>
+    </div>
+  `;
+
+  document.getElementById("members").innerHTML=state.members.map(m=>{
+    const progress=Math.max(0,Math.min(100,Number(m.riskFreeProgressPct||0)));
+    return `
+      <div class="card member ${m.slug===state.me?"me":""}">
+        <div class="name">${m.name}</div>
+        <div class="pct">${m.ownershipPct.toFixed(2)}% ownership</div>
+        <div class="value">${money(m.value,state.currency)}</div>
+
+        <div class="metrics">
+          <div class="row"><span>Initial deposit</span><strong>${money(m.initialDeposit,state.currency)}</strong></div>
+          <div class="row"><span>Since ${startLabel}</span><strong class="${pnlClass(m.profitLoss)}">${signedMoney(m.profitLoss,state.currency)}</strong></div>
+          <div class="row"><span>Return</span><strong class="${pnlClass(m.returnPct)}">${signedPct(m.returnPct)}</strong></div>
+        </div>
+
+        <div class="riskBox">
+          <div class="riskTop">
+            <div>
+              <div class="statLabel">Risk-free target</div>
+              <strong>${money(m.riskFreeTarget,state.currency)}</strong>
+            </div>
+            <span class="badge ${m.riskFreeAchieved?"ok":""}">${m.riskFreeAchieved?"RISK-FREE AVAILABLE":"BUILDING"}</span>
+          </div>
+          <div class="progress"><span style="width:${progress}%"></span></div>
+          <div class="riskText">${m.riskFreeAchieved
+            ?"Your profit now covers your original "+money(m.initialDeposit,state.currency)+" deposit."
+            :money(m.riskFreeRemaining,state.currency)+" more account value needed before your original deposit is covered by profit."}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 async function refresh(){
