@@ -1,21 +1,13 @@
 # OUR HEDGEFUND
 
-GitHub + Netlify live-account dashboard.
+A live MT5 balance dashboard for Micky and Doc, with **50% ownership each**.
 
-## Access
-- Dashboard members: Micky and Doc only.
-- Former third-party login is rejected server-side, including old sessions.
-- **Security:** The legacy shared PIN is still hardcoded. Rotate it and use distinct credentials before relying on this for live funds.
-- No withdrawals via interface or API.
-- No trading controls or trade history.
-- Account balance and equity are reported by the MT5 reporter.
+- Only Micky and Doc may log in; other accounts and their sessions are rejected.
+- Withdrawal buttons and the withdrawal API are removed.
+- Every member is displayed as 50% of the live fund equity; MT5 reporting updates both capital balances equally.
+- The migration removes the third member and reconciles the database ledger to 50/50. It does not transfer broker funds.
+- A shared hardcoded PIN remains; rotate it and implement separate account credentials before relying on this for real-money privacy.
+- There are no trading controls in the dashboard.
 
-## Ownership and historical capital
-The original accounting stored Micky 40%, Doc 30%, third party 30%. The third party is no longer shown as an active member, but historical third-party capital remains in the accounting ledger; no money or ownership has been reassigned. The dashboard discloses this reserved capital. Confirm the new Micky/Doc split and settle the third-party allocation before changing the ledger. Do not misrepresent the displayed member values as a fully reconciled two-person split.
-
-## Netlify
-Netlify Functions provide the API. Netlify Database holds capital allocations and sessions.
-
-## MT5
-The MT5 reporter is not committed because it contains the private reporter key.
-Use `OUR_HEDGEFUND_Netlify_BalanceReporter.mq5`.
+Netlify Functions serve the API and Netlify Database stores account figures.
+The MT5 reporter is not committed because it contains a private reporter key.
